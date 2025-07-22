@@ -462,7 +462,7 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                [Lang.Notice_OnCooldown] = "You must wait {0}  you or allies can engage another Bradley.",
+                [Lang.Notice_OnCooldown] = "You must wait {0} before engaging another Bradley.",
                 [Lang.Notice_CooldownStarted] = "You and your allies are restricted from attacking another Bradley for the next {0}."
             }, this, "en");
         }
