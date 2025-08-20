@@ -13,7 +13,7 @@ using System.Collections.Generic;
 
 namespace Oxide.Plugins
 {
-    [Info("Bradley Kill Cooldown", "VisEntities", "1.0.0")]
+    [Info("Bradley Kill Cooldown", "VisEntities", "1.1.0")]
     [Description("Adds a cooldown after killing a Bradley so the same players can't farm it nonstop.")]
     public class BradleyKillCooldown : RustPlugin
     {
@@ -29,6 +29,7 @@ namespace Oxide.Plugins
         private static BradleyKillCooldown _plugin;
         private static Configuration _config;
         private readonly Dictionary<ulong, double> _cooldownUntil = new Dictionary<ulong, double>();
+        private readonly Dictionary<ulong, int> _bradleyKillsSinceLastCooldown = new Dictionary<ulong, int>();
 
         #endregion Fields
 
@@ -41,6 +42,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Minutes Before Player Can Kill Another Bradley")]
             public double MinutesBeforePlayerCanKillAnotherBradley { get; set; }
+
+            [JsonProperty("Bradley Kills Needed To Start Cooldown")]
+            public int BradleyKillsNeededToStartCooldown { get; set; }
         }
 
         protected override void LoadConfig()
@@ -73,6 +77,9 @@ namespace Oxide.Plugins
             if (string.Compare(_config.Version, "1.0.0") < 0)
                 _config = defaultConfig;
 
+            if (string.Compare(_config.Version, "1.1.0") < 0)
+                _config.BradleyKillsNeededToStartCooldown = defaultConfig.BradleyKillsNeededToStartCooldown;
+
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
             _config.Version = Version.ToString();
         }
@@ -82,7 +89,8 @@ namespace Oxide.Plugins
             return new Configuration
             {
                 Version = Version.ToString(),
-                MinutesBeforePlayerCanKillAnotherBradley = 60.0
+                MinutesBeforePlayerCanKillAnotherBradley = 60.0,
+                BradleyKillsNeededToStartCooldown = 1
             };
         }
 
@@ -113,10 +121,26 @@ namespace Oxide.Plugins
             if (PermissionUtil.HasPermission(killer, PermissionUtil.BYPASS))
                 return;
 
-            ApplyCooldown(killer.userID);
+            int threshold = GetKillsRequiredBeforeCooldown();
 
-            double totalSeconds = _config.MinutesBeforePlayerCanKillAnotherBradley * 60.0;
-            MessagePlayer(killer, Lang.Notice_CooldownStarted, FormatDuration(totalSeconds));
+            int currentKills = 0;
+            if (_bradleyKillsSinceLastCooldown.TryGetValue(killer.userID, out currentKills))
+                currentKills = currentKills + 1;
+            else
+                currentKills = 1;
+
+            if (currentKills >= threshold)
+            {
+                ApplyCooldown(killer.userID);
+                _bradleyKillsSinceLastCooldown[killer.userID] = 0;
+
+                double totalSeconds = _config.MinutesBeforePlayerCanKillAnotherBradley * 60.0;
+                MessagePlayer(killer, Lang.Notice_CooldownStarted, FormatDuration(totalSeconds));
+            }
+            else
+            {
+                _bradleyKillsSinceLastCooldown[killer.userID] = currentKills;
+            }
         }
 
         private object OnEntityTakeDamage(BradleyAPC bradley, HitInfo hitInfo)
@@ -290,6 +314,18 @@ namespace Oxide.Plugins
             if (ts.TotalHours >= 1)
                 return string.Format("{0}h {1}m", (int)ts.TotalHours, ts.Minutes);
             return string.Format("{0}m {1}s", ts.Minutes, ts.Seconds);
+        }
+
+        private int GetKillsRequiredBeforeCooldown()
+        {
+            if (_config == null)
+                return 1;
+
+            int value = _config.BradleyKillsNeededToStartCooldown;
+            if (value <= 0)
+                return 1;
+
+            return value;
         }
 
         #endregion Cooldown Logic
